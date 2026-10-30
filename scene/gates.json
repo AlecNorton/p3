@@ -1,0 +1,110 @@
+{
+  "_comment": "Window openings in scene metres (in this scene, Vicon metres), in the order they are flown, each along its normal. A window's name is its height: the bottom edge of the board is 0.25 m above the floor for gate_1, 0.55 m for gate_2 and 0.85 m for gate_3. Openings 0.47 x 0.47 m. For checking your detector and scoring runs only: your flight code may not read this file.",
+  "gates": [
+    {
+      "name": "gate_1",
+      "centre": [
+        1.280999999,
+        -0.354500005,
+        0.704000003
+      ],
+      "normal": [
+        0.937065055,
+        -0.348884688,
+        -0.013731573
+      ],
+      "up": [
+        0.016047816,
+        0.003749489,
+        0.999864195
+      ],
+      "width_m": 0.47,
+      "height_m": 0.47,
+      "vicon": {
+        "centre": [
+          1.281,
+          -0.3545,
+          0.704
+        ],
+        "normal": [
+          0.937065,
+          -0.348885,
+          -0.013732
+        ],
+        "heading_deg": -20.41,
+        "opening_centre_above_floor_m": 0.705,
+        "plate_bottom_above_floor_m": 0.25
+      }
+    },
+    {
+      "name": "gate_2",
+      "centre": [
+        2.634499994,
+        0.387999996,
+        0.980000004
+      ],
+      "normal": [
+        0.8818422,
+        0.471275781,
+        -0.01592085
+      ],
+      "up": [
+        0.01604782,
+        0.00374949,
+        0.999864195
+      ],
+      "width_m": 0.47,
+      "height_m": 0.47,
+      "vicon": {
+        "centre": [
+          2.6345,
+          0.388,
+          0.98
+        ],
+        "normal": [
+          0.881842,
+          0.471276,
+          -0.015921
+        ],
+        "heading_deg": 28.12,
+        "opening_centre_above_floor_m": 1.005,
+        "plate_bottom_above_floor_m": 0.55
+      }
+    },
+    {
+      "name": "gate_3",
+      "centre": [
+        3.956999994,
+        0.074999992,
+        1.260000008
+      ],
+      "normal": [
+        0.946301009,
+        -0.32298459,
+        -0.013976936
+      ],
+      "up": [
+        0.016047816,
+        0.003749489,
+        0.999864195
+      ],
+      "width_m": 0.47,
+      "height_m": 0.47,
+      "vicon": {
+        "centre": [
+          3.957,
+          0.075,
+          1.26
+        ],
+        "normal": [
+          0.946301,
+          -0.322985,
+          -0.013977
+        ],
+        "heading_deg": -18.84,
+        "opening_centre_above_floor_m": 1.305,
+        "plate_bottom_above_floor_m": 0.85
+      }
+    }
+  ]
+}

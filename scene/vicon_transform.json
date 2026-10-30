@@ -1,0 +1,38 @@
+{
+  "_comment": "Vicon metres -> splat file units: p_splat = scale * (R @ p_vicon) + t. This scene is stored in the Vicon frame, so R is the identity and t is zero; metres_per_unit converts splat units to metres.",
+  "scale": 0.29664446925791027,
+  "R": [
+    [
+      1.0,
+      0.0,
+      0.0
+    ],
+    [
+      0.0,
+      1.0,
+      0.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "t": [
+    0.0,
+    0.0,
+    0.0
+  ],
+  "metres_per_unit": 3.3710387471629364,
+  "rms_residual_m": 0.011755253419558012,
+  "rms_residual_units": 0.0034871309116370213,
+  "n_points": 5,
+  "anchors_used": [
+    "A2",
+    "A3",
+    "A4",
+    "A5",
+    "A6"
+  ],
+  "metres_per_splat_unit": 3.371039
+}

@@ -1,0 +1,37 @@
+{
+  "_comment": "The six floor anchors in VICON metres, from the layout recording that this scene was registered against -- the frame vicon_transform.json is fitted in. The fit itself used A2, A3, A4, A5, A6; A1 produced no usable rays and is carried here only as a drift reference. Record them again at the start of a flight session and compare with splat_hitl.anchors.drift: this frame has already moved once, by 0.66 deg, with nobody touching the system.",
+  "anchors": {
+    "A1": [
+      0.0112,
+      0.0031,
+      0.0211
+    ],
+    "A2": [
+      -0.3986,
+      1.4313,
+      0.0171
+    ],
+    "A3": [
+      2.6121,
+      1.4809,
+      -0.0301
+    ],
+    "A4": [
+      5.2226,
+      1.4416,
+      -0.0723
+    ],
+    "A5": [
+      5.252,
+      -1.3597,
+      -0.0598
+    ],
+    "A6": [
+      2.6459,
+      -1.328,
+      -0.0255
+    ]
+  },
+  "recorded": "2026-09-20T13:50Z",
+  "source": "scene_layouts/anchors, /vicon/room_anchors/room_anchors"
+}

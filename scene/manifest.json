@@ -1,0 +1,33 @@
+{
+  "name": "a3_train",
+  "_comment": "The A3 training course: three windows on stands in the net, flown gate_1, gate_2, gate_3 along +x. A Polycam LiDAR capture, solved by COLMAP and trained with splatfacto, registered to the Vicon frame at 11.7 mm RMS in the floor plane and stored in that frame: scene metres are Vicon metres, z up from the floor.",
+  "files": {
+    "splat": "a3_train_cleaned_splat.splat",
+    "esdf": "a3_train_esdf.npy",
+    "contract": "policy_contract.json",
+    "gates": "gates.json",
+    "task": "task.json",
+    "pointcloud": "a3_train_flight_pc.ply",
+    "splat_frame": "splat_frame.json",
+    "vicon_transform": "vicon_transform.json",
+    "anchors": "anchors.json"
+  },
+  "checksums": {
+    "splat": "2aefb6a93598f1108f3917c0e550a1b25162d95de7a8318eda11b367e21a88d0"
+  },
+  "contract_fingerprint": "87ff6587c836",
+  "_render_worker_args": [
+    "--backend",
+    "cleaned-splat",
+    "--splat",
+    "a3_train_cleaned_splat.splat",
+    "--splat-config",
+    "nerfstudio_config.yml",
+    "--transforms-json",
+    "capture_transforms.json",
+    "--scale-to-metres",
+    "3.371039",
+    "--empty-depth-raw-m",
+    "4.0"
+  ]
+}

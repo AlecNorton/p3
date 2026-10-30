@@ -1,0 +1,317 @@
+{
+  "_comment": "Levelled metric frame for a splat, and the pole-top seed for its registration. z is up and 0 is the floor. The levelling and the scale are iterated against the surveyed pole tops until the fit measures no tilt and no scale change left, so `level.rows` and `scale.metres_per_splat_unit` are corrected values, not the dataparser's or ARKit's raw claim -- `*_initial` holds those. The seed says where to look for the six floor anchors; it is NOT the registration.",
+  "capture": "captures/a3_train/polycam1/nerfstudio_dataset_colmap",
+  "run": "captures/a3_train/polycam1/training_colmap_run",
+  "splat": "captures/a3_train/polycam1/export_colmap_30k/splat.ply",
+  "gravity": {
+    "up_in_transforms_frame": [
+      -0.850911,
+      -0.511183,
+      -0.121011
+    ],
+    "up_in_splat_frame": [
+      -0.879148,
+      -0.438425,
+      0.186769
+    ],
+    "up_in_splat_frame_initial": [
+      -0.879389,
+      -0.43875,
+      0.184859
+    ],
+    "per_frame_scatter_deg": {
+      "median": 0.115,
+      "p95": 0.27,
+      "max": 1.61
+    },
+    "nerfstudio_up_error_deg": 79.236,
+    "folded_tilt_deg": 0.1119,
+    "tracking_segments": {
+      "0": 286,
+      "1": 109,
+      "2": 35,
+      "3": 3
+    }
+  },
+  "scale": {
+    "source": "arkit arkit + pole-top fit",
+    "arkit_metres_per_transforms_unit": 0.444938,
+    "arkit_segment": 0,
+    "arkit_segment_frames": 286,
+    "arkit_fit_residual_mm": [
+      31.9,
+      93.7
+    ],
+    "arkit_poses": "arkit",
+    "arkit_poses_why": "21 corrected focals against 21 raw: the optimisation did not run",
+    "metres_per_splat_unit": 3.396469,
+    "metres_per_splat_unit_initial": 3.288117,
+    "folded_correction_pct": 3.295,
+    "residual_correction_pct": 0.0028
+  },
+  "cameras": {
+    "n": 433,
+    "median_height_m": 1.4759,
+    "height_p5_p95_m": [
+      0.6534,
+      1.6648
+    ]
+  },
+  "level": {
+    "rows": [
+      [
+        0.4765463,
+        -0.81017493,
+        0.34135056
+      ],
+      [
+        0.00165941,
+        0.3891019,
+        0.92119323
+      ],
+      [
+        -0.87914781,
+        -0.43842478,
+        0.18676948
+      ]
+    ],
+    "rows_initial": [
+      [
+        0.47610362,
+        -0.81039576,
+        0.34144409
+      ],
+      [
+        -0.0,
+        0.38827414,
+        0.92154392
+      ],
+      [
+        -0.87938919,
+        -0.43875039,
+        0.18485872
+      ]
+    ],
+    "source": "floor plane",
+    "floor_residual_tilt_deg": 0.0021,
+    "pole_fit_disagreement_deg": 1.1158,
+    "floor_offset_units": -0.3968686,
+    "floor_inliers": 103469,
+    "floor_rms_mm": 10.81,
+    "floor_surface_splats": 491415,
+    "floor_peak_count": 32300
+  },
+  "passes": [
+    {
+      "pass_": 0,
+      "metres_per_splat_unit": 3.288117,
+      "floor_offset_units": -0.39725434,
+      "floor_tilt_deg": 0.1104,
+      "floor_inliers": 104418,
+      "floor_rms_mm": 10.73,
+      "floor_top_bins_m": [
+        [
+          -1.3041,
+          27071
+        ],
+        [
+          -1.3091,
+          21772
+        ],
+        [
+          -1.2991,
+          12303
+        ],
+        [
+          -1.3141,
+          10924
+        ],
+        [
+          -1.3191,
+          7747
+        ]
+      ],
+      "pole_tilt_deg": 1.1342,
+      "measured_scale_pct": 3.2953,
+      "clustered": 4,
+      "recovered": 2,
+      "residual_mm": {
+        "median": 21.4,
+        "max": 34.8
+      },
+      "residual_xy_mm": {
+        "median": 5.1,
+        "max": 8.0
+      }
+    },
+    {
+      "pass_": 1,
+      "metres_per_splat_unit": 3.396469,
+      "floor_offset_units": -0.3968686,
+      "floor_tilt_deg": 0.0021,
+      "floor_inliers": 103469,
+      "floor_rms_mm": 10.81,
+      "floor_top_bins_m": [
+        [
+          -1.3492,
+          32300
+        ],
+        [
+          -1.3442,
+          19245
+        ],
+        [
+          -1.3542,
+          13211
+        ],
+        [
+          -1.3592,
+          9064
+        ],
+        [
+          -1.3642,
+          6729
+        ]
+      ],
+      "pole_tilt_deg": 1.1158,
+      "measured_scale_pct": 0.0028,
+      "clustered": 4,
+      "recovered": 2,
+      "residual_mm": {
+        "median": 19.8,
+        "max": 33.9
+      },
+      "residual_xy_mm": {
+        "median": 5.4,
+        "max": 8.1
+      }
+    }
+  ],
+  "pole_tops_splat_m": [
+    {
+      "xyz": [
+        -1.5698,
+        0.8127,
+        1.8004
+      ],
+      "splats": 50,
+      "recovered": false
+    },
+    {
+      "xyz": [
+        -0.9918,
+        0.9705,
+        1.8024
+      ],
+      "splats": 68,
+      "recovered": false
+    },
+    {
+      "xyz": [
+        0.0035,
+        -0.0104,
+        1.8202
+      ],
+      "splats": 65,
+      "recovered": false
+    },
+    {
+      "xyz": [
+        0.2295,
+        0.4696,
+        1.8084
+      ],
+      "splats": 46,
+      "recovered": false
+    },
+    {
+      "xyz": [
+        0.3898,
+        -1.0983,
+        1.8118
+      ],
+      "splats": 144,
+      "recovered": true
+    },
+    {
+      "xyz": [
+        0.8994,
+        -0.9427,
+        1.8129
+      ],
+      "splats": 128,
+      "recovered": true
+    }
+  ],
+  "seed": {
+    "scale": 1.000028,
+    "R": [
+      [
+        0.58870957,
+        -0.80834463,
+        0.0
+      ],
+      [
+        0.80834463,
+        0.58870957,
+        0.0
+      ],
+      [
+        0.0,
+        0.0,
+        1.0
+      ]
+    ],
+    "t": [
+      2.753268,
+      0.156496,
+      -0.02058
+    ],
+    "_form": "vicon_m = scale * R @ splat_levelled_m + t",
+    "rotation": "yaw only, the frame is levelled off the floor and the poles do not measure tilt",
+    "residual_mm": {
+      "median": 19.8,
+      "max": 33.9,
+      "per_pole": [
+        33.9,
+        22.2,
+        12.4,
+        3.0,
+        17.3,
+        27.3
+      ]
+    },
+    "residual_xy_mm": {
+      "median": 5.4,
+      "max": 8.1,
+      "per_pole": [
+        8.1,
+        7.6,
+        5.3,
+        2.8,
+        5.5,
+        1.9
+      ]
+    },
+    "yaw_deg": 53.935,
+    "off_vertical_deg": 0.0,
+    "free_fit_off_vertical_deg": 1.116,
+    "stands": [
+      {
+        "name": "gate_1",
+        "vicon_span_m": 0.6136,
+        "splat_span_m": 0.5992
+      },
+      {
+        "name": "gate_2",
+        "vicon_span_m": 0.5281,
+        "splat_span_m": 0.5305
+      },
+      {
+        "name": "gate_3",
+        "vicon_span_m": 0.5396,
+        "splat_span_m": 0.5328
+      }
+    ]
+  }
+}

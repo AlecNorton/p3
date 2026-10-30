@@ -1,0 +1,34 @@
+{
+  "_comment": "Take off at 'start' (Vicon metres, facing +x: start_yaw_deg 0) and fly the windows in the order of 'course'. 'goal' is 0.5 m past the last window. 'scene_frame' is the same start in scene metres.",
+  "frame": "vicon_metres",
+  "course": [
+    "gate_1",
+    "gate_2",
+    "gate_3"
+  ],
+  "pairs": [
+    {
+      "name": "train_1",
+      "start": [
+        0.0,
+        0.0,
+        0.7
+      ],
+      "goal": [
+        4.43,
+        -0.086,
+        1.253
+      ],
+      "start_yaw_deg": 0.0
+    }
+  ],
+  "scene_frame": {
+    "_comment": "the start in scene metres, from vicon_transform.json",
+    "start_position_m": [
+      0.0,
+      0.0,
+      0.7
+    ],
+    "start_yaw_rad": 0.0
+  }
+}

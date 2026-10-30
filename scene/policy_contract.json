@@ -1,0 +1,58 @@
+{
+  "name": "a3_train",
+  "observation": {
+    "sensor": {
+      "name": "a3_train",
+      "width": 96,
+      "height": 64,
+      "fov_x_deg": 60.656255852364644,
+      "mount_pitch_deg": 0.0,
+      "mount_yaw_deg": 0.0,
+      "stereo_baseline_m": null,
+      "depth": {
+        "kind": "metric",
+        "near_m": 0.05,
+        "far_m": 4.0,
+        "empty_depth_m": 4.0
+      },
+      "rate_hz": 15.0,
+      "notes": "empty_depth_m matches the worker's --empty-depth-raw-m 4.0"
+    },
+    "clip_far_m": 4.0,
+    "normalize": "clip_unit",
+    "history": 4,
+    "history_order": "oldest_first",
+    "prime": "repeat_first",
+    "nan_fill_m": 4.0,
+    "neginf_fill_m": 0.0,
+    "channels": "rgb_depth",
+    "rgb_range_max": 1.0
+  },
+  "action": {
+    "kind": "acceleration",
+    "frame": "body_flu",
+    "scale": 1.5,
+    "clip_unit": true,
+    "limit_norm": true,
+    "yaw_mode": "fixed",
+    "integrator": "open_loop"
+  },
+  "control": {
+    "rate_hz": 15.0
+  },
+  "trainer_action_semantics": "body_acceleration_fraction_double_integrator_v1",
+  "trainer_observation_semantics": "",
+  "notes": "Field of view PINNED to the value a5_test, a5_train and the 20 Sep a3_train all share, not re-derived from this COLMAP solve's own camera, which reads 62.19 deg: fov_x_deg is inside the contract fingerprint and the four scenes have to agree. Channels rgb_depth, because A3 is gate perception: depth alone cannot see a painted gate. The metric-splat trainer implements depth only, so its observation string is left empty rather than claiming an observation this contract does not have. The action side is the trainer's, unchanged.",
+  "fingerprint": "87ff6587c836",
+  "derived": {
+    "observation_shape": [
+      16,
+      64,
+      96
+    ],
+    "fov_x_half_tan": 0.5850115681034979,
+    "fov_y_deg": 42.612334300758434,
+    "control_dt_s": 0.06666666666666667,
+    "sensor_fingerprint": "8168390d8654"
+  }
+}
