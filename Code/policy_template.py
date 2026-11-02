@@ -31,6 +31,8 @@ import numpy as np
 
 from splat_hitl.commands import Action
 from splat_hitl.policy import Policy
+import torch_model
+import cv2
 
 from fpv import FpvRecorder
 
@@ -72,6 +74,71 @@ def world_to_body(v_world, yaw_rad):
     c, s = math.cos(yaw_rad), math.sin(yaw_rad)
     return np.array([c * v[0] + s * v[1], -s * v[0] + c * v[1], v[2]])
 
+def calc_normal_vector(p1, p2, p3):
+    """Calculate normal vector of triangle
+
+    Parameters
+    ----------
+    p1 : np.array
+        3D point
+    p2 : np.array
+        3D point
+    p3 : np.array
+        3D point
+
+    Returns
+    -------
+    normal_vector : np.array
+        normal vector (3,)
+
+    """
+    # calculate two vectors of triangle
+    v1 = p2 - p1
+    v2 = p3 - p1
+
+    # calculate normal vector
+    normal_vector = np.cross(v1, v2)
+
+    # normalize vector
+    normal_vector = normal_vector / np.linalg.norm(normal_vector)
+
+    return normal_vector
+
+def distance_to_plane(point, normal, origin):
+    dot_product = np.dot(normal, point) - np.dot(normal, origin)
+    if np.isclose(dot_product, 0):
+        return 0.0
+    else:
+        distance = abs(dot_product) / np.linalg.norm(normal)
+        return distance
+    
+def ransac_normal_vector_estimation(points_3d, inlier_radio_th = 0.7, inlier_dist = 0.1, p = 0.99):
+    center = np.mean(points_3d, axis=0)
+
+    max_iter = int(np.floor(np.log(1.0-p)/np.log(1.0-(1.0-inlier_radio_th)**3)))
+
+    for ite in range(max_iter):
+        # Random sampling
+        sampled_ids = np.random.choice(points_3d.shape[0], size=3,
+                                       replace=False)
+        sampled_points = points_3d[sampled_ids, :]
+        p1 = sampled_points[0, :]
+        p2 = sampled_points[1, :]
+        p3 = sampled_points[2, :]
+        normal_vector = calc_normal_vector(p1, p2, p3)
+
+        # calc inlier ratio
+        n_inliner = 0
+        for i in range(points_3d.shape[0]):
+            p = points_3d[i, :]
+            if distance_to_plane(p, normal_vector, center) <= inlier_dist:
+                n_inliner += 1
+        inlier_ratio = n_inliner / points_3d.shape[0]
+        print(f"Iter:{ite}, {inlier_ratio=}")
+        if inlier_ratio > inlier_radio_th:
+            return center, normal_vector
+
+    return center, None
 
 def wrap_pi(a):
     return (a + math.pi) % (2.0 * math.pi) - math.pi
@@ -91,7 +158,7 @@ class WindowRacer(Policy):
         # Keep the weights next to this file and load them by a path built from
         # HERE, e.g. onnxruntime.InferenceSession(os.path.join(HERE, "weights",
         # "window.onnx")). Load once, here: never inside act().
-        self.net = None
+        self.net, self.device = torch_model.load_model('best.torchscript', 'cpu')
         ######## END TODO ########
         self.fpv = FpvRecorder() if record_fpv else None
         self.K = None
@@ -111,17 +178,29 @@ class WindowRacer(Policy):
         {"mask": (H, W) bool, "corners": (4, 2) pixel array}; the FPV recorder
         draws "mask" and "corners" if present.
         """
-        ######## TODO - YOUR NETWORK ########
-        return None
-        ######## END TODO ########
+        det = torch_model.predict(self.net, self.device, rgb, 320)
+        return torch_model.closest(rgb, depth_m, det)
 
     def locate(self, det, depth_m, state):
         """Detection + depth -> where the window is in the world, or None."""
-        ######## TODO - WHERE IS THE WINDOW ########
+
+        #Back projecting. 
+        mask = det['mask'].astype('uint8')*255
+        pixels = np.nonzero(mask)
+        x, y  = pixels[1], pixels[0]
+        world_points = []
+        for i in range(0, len(x)-1):
+            u = x[i]
+            v = y[i]
+            z = depth_m[v, u]
+            world_points.append(camera_to_world(pixel_to_camera(u, v, z, self.K), state))
+
+        world_points = np.asarray(world_points)
+        center, normal_vec = ransac_normal_vector_estimation(world_points)
         # Back-project the window's pixels with their depths (pixel_to_camera),
         # move them to the world (camera_to_world) and find the opening's centre.
         # A plane through the board's points gives the direction it faces.
-        return None
+        return center, normal_vec
         ######## END TODO ########
 
     # -- control -------------------------------------------------------------
@@ -136,7 +215,8 @@ class WindowRacer(Policy):
         if self.K is None:
             h, w = obs.depth_m.shape
             self.K = camera_matrix(w, h)
-
+        
+        print
         det = self.detect(obs.rgb, obs.depth_m)
         seen = None if det is None else self.locate(det, obs.depth_m, state)
 

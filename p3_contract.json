@@ -1,0 +1,58 @@
+{
+  "name": "p3",
+  "observation": {
+    "sensor": {
+      "name": "a3_train",
+      "width": 320,
+      "height": 213,
+      "fov_x_deg": 60.656255852364644,
+      "mount_pitch_deg": 0.0,
+      "mount_yaw_deg": 0.0,
+      "stereo_baseline_m": null,
+      "depth": {
+        "kind": "metric",
+        "near_m": 0.05,
+        "far_m": 4.0,
+        "empty_depth_m": 4.0
+      },
+      "rate_hz": 15.0,
+      "notes": "empty_depth_m matches the worker's --empty-depth-raw-m 4.0"
+    },
+    "clip_far_m": 4.0,
+    "normalize": "clip_unit",
+    "history": 1,
+    "history_order": "oldest_first",
+    "prime": "repeat_first",
+    "nan_fill_m": 4.0,
+    "neginf_fill_m": 0.0,
+    "channels": "rgb_depth",
+    "rgb_range_max": 1.0
+  },
+  "action": {
+    "kind": "velocity",
+    "frame": "body_flu",
+    "scale": 1.5,
+    "clip_unit": true,
+    "limit_norm": true,
+    "yaw_mode": "free",
+    "integrator": "open_loop"
+  },
+  "control": {
+    "rate_hz": 15.0
+  },
+  "trainer_action_semantics": "",
+  "trainer_observation_semantics": "",
+  "notes": "",
+  "fingerprint": "cd0139fe031a",
+  "derived": {
+    "observation_shape": [
+      4,
+      213,
+      320
+    ],
+    "fov_x_half_tan": 0.5850115681034979,
+    "fov_y_deg": 42.55171052754858,
+    "control_dt_s": 0.06666666666666667,
+    "sensor_fingerprint": "c20e6f79336f"
+  }
+}
