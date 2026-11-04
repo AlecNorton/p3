@@ -24,7 +24,7 @@ import os
 import sys
 import time
 from dataclasses import replace
-import torch 
+#import torch 
 import numpy as np
 
 from splat_hitl.bundle import SceneBundle
