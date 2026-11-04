@@ -59,7 +59,7 @@ FOV_X_DEG = 60.656255852364644         # fixed: the drone camera's field of view
 # ----------------------------------------------------------------- decisions
 SWEEP_RAD = math.radians(60.0)         # survey: +-60 deg around the current heading
 SWEEP_RATE = math.radians(30.0)        # survey: 30 deg/s
-VIEW_DISTANCES = (1.2, 1.0, 0.8)       # view: first one inside the flight box
+VIEW_DISTANCES = (1.2, 1.1, 1.0, 0.9, 0.8, 0.7, 0.6)   # view: first inside the box with a clear line
 BOX_MARGIN_M = 0.3
 BACKOFF_M = 0.2                        # after 3 views: one more, 0.2 m further back
 MAX_VIEWS = 3
@@ -124,6 +124,48 @@ def clamp_box(p, margin=BOX_MARGIN_M):
 
 
 # --------------------------------------------------------------------------- #
+# Passed windows as obstacles: the board (known size, centred on the measured
+# centre, in the measured plane) and its two poles, all grown by OBSTACLE_INFLATE_M.
+# --------------------------------------------------------------------------- #
+BOARD_M = 0.91                          # printed board, square, centred on the opening
+POLE_H_M = 1.78                         # wooden poles, floor to top
+POLE_OFFSET_M = 0.06                    # pole centre beyond the board's side edge
+POLE_R_M = 0.03                         # pole radius, with the rails
+OBSTACLE_INFLATE_M = 0.075 + 0.10       # drone radius + margin, as in P2b
+LINE_STEP_M = 0.02                      # line check sampling
+
+
+def gate_axes(g):
+    """Unit axes of a gate: n (through the opening), u (up, in the board plane), r (across)."""
+    n = np.asarray(g.n, float) / np.linalg.norm(g.n)
+    u = np.array([0.0, 0.0, 1.0]) - n[2] * n
+    u /= np.linalg.norm(u)
+    return n, u, np.cross(u, n)
+
+
+def obstacle_hits(points, g, inflate=OBSTACLE_INFLATE_M):
+    """How many of the (N, 3) points are inside gate g's inflated board or poles."""
+    P = np.atleast_2d(np.asarray(points, float))
+    n, u, r = gate_axes(g)
+    d = P - np.asarray(g.c, float)
+    s, a, b = d @ n, d @ r, d @ u               # through, across, up (from the centre)
+    half = 0.5 * BOARD_M
+    board = (np.abs(s) < inflate) & (np.abs(a) < half + inflate) & (np.abs(b) < half + inflate)
+    pole_a = half + POLE_OFFSET_M
+    poles = ((np.abs(s) < POLE_R_M + inflate) & (np.abs(np.abs(a) - pole_a) < POLE_R_M + inflate)
+             & (P[:, 2] < POLE_H_M + inflate))
+    return int(np.count_nonzero(board | poles))
+
+
+def line_hits(p0, p1, obstacles, step=LINE_STEP_M):
+    """Samples of the straight line p0 -> p1 that fall inside any obstacle (0 = clear)."""
+    p0, p1 = np.asarray(p0, float), np.asarray(p1, float)
+    k = max(2, int(math.ceil(np.linalg.norm(p1 - p0) / step)) + 1)
+    P = p0 + np.linspace(0.0, 1.0, k)[:, None] * (p1 - p0)
+    return sum(obstacle_hits(P, g) for g in obstacles)
+
+
+# --------------------------------------------------------------------------- #
 # The modes. update() returns (world velocity, yaw rate, next mode name or None).
 # --------------------------------------------------------------------------- #
 class Survey:
@@ -165,18 +207,25 @@ class View:
         s, g = r.state, r.target
         r.view_tries += 1
         dists = (r.d_view + BACKOFF_M,) if r.backoff_active else VIEW_DISTANCES
-        self.vp = None
+        p = np.asarray(s.position_m, float)
+        obstacles = [x for x in r.gates.gates if x.status == "passed"]
+        self.vp, fallback = None, []
         for d in dists:
             cand = g.c - d * g.n
             cand[2] = g.c[2]                       # at the gate centre's height
-            if in_box(cand):
+            hits = line_hits(p, cand, obstacles)
+            if in_box(cand) and hits == 0:         # inside the box, line clear of passed windows
                 self.vp, r.d_view = cand, d
                 break
-        if self.vp is None:                        # none inside: the last one, clamped
-            r.d_view = dists[-1]
-            cand = g.c - r.d_view * g.n
-            cand[2] = g.c[2]
-            self.vp = clamp_box(cand)
+            fallback.append((hits, d, clamp_box(cand)))
+        if self.vp is None:                        # nothing clear: the least-blocked one, clamped
+            fallback = [(line_hits(p, c, obstacles), d, c) for _, d, c in fallback]
+            hits, r.d_view, self.vp = min(fallback, key=lambda f: (f[0], -f[1]))
+            r.log("no clear viewpoint for gate %d: using d %.1f m, %d line samples blocked"
+                  % (g.id, r.d_view, hits))
+        elif r.d_view != dists[0]:
+            r.log("viewpoint for gate %d at d %.1f m (longer ones blocked or outside the box)"
+                  % (g.id, r.d_view))
         self.traj = Quintic(s.position_m, self.vp)
         self.t0, self.yaw_hold = s.t_s, s.yaw_rad
         self.heading = heading_of(g.n)
