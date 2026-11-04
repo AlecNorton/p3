@@ -70,7 +70,9 @@ MATCH_DIST_M = 0.75 * 0.91             # false-gate check: centroid within 3/4 w
 MATCH_ANGLE_DEG = 20.0
 MATCH_DEPTH_TOL_M = 0.3                # ... and about d_view away
 PASS_MAX_ANGLE_DEG = 15.0              # pass line vs normal
-PASS_EXIT_M = 0.6                      # stop 0.6 m past the centre
+PASS_EXIT_M = 0.6                      # default: stop 0.6 m past the centre
+EXIT_OPTIONS_M = (0.3, 0.4, 0.5, 0.6, 0.7)   # exits tried, chosen for the next gate's viewpoint
+EXIT_VIEW_DISTANCES = (1.2, 1.1, 1.0)  # next-gate viewpoints the exit is checked against
 # The flight box (Vicon metres = scene metres in a3_train and a3_test) and height band.
 BOX_MIN = np.array([-0.50, -1.20, 0.10])
 BOX_MAX = np.array([5.25, 1.20, 1.80])
@@ -324,11 +326,46 @@ class Pass:
         p0 = np.array(s.position_m, float)
         u = g.c - p0
         u /= np.linalg.norm(u)
-        self.end = g.c + PASS_EXIT_M * u
+        self.end = self.choose_exit(r, g, u)
         self.traj = Quintic(p0, self.end)
         self.t0, self.yaw_hold = s.t_s, s.yaw_rad
         self.crossed = False
         r.ctrl.reset()
+
+    @staticmethod
+    def choose_exit(r, g, u):
+        """Where to stop after the gate, chosen with the next gate in mind.
+
+        Exits c + e*u, e in EXIT_OPTIONS_M, inside the box. For the next tracked
+        gate ahead of this one, and d in EXIT_VIEW_DISTANCES in order: its viewpoint
+        c2 - d*n2 (at c2's height, inside the box); the exits whose straight line to
+        it misses every passed window and this one; the one closest to it wins.
+        Otherwise PASS_EXIT_M (or the longest exit inside the box), and View
+        chooses as before.
+        """
+        exits = [(e, g.c + e * u) for e in EXIT_OPTIONS_M if in_box(g.c + e * u)]
+        if not exits:
+            r.log("every exit after gate %d is outside the box: shortest one, clamped" % g.id)
+            return clamp_box(g.c + EXIT_OPTIONS_M[0] * u)
+        nxt = r.gates.select(g.c)                  # the next tracked gate ahead of this one
+        if nxt is not None:
+            obstacles = [x for x in r.gates.gates if x.status == "passed"] + [g]
+            for d in EXIT_VIEW_DISTANCES:
+                vp = nxt.c - d * nxt.n
+                vp[2] = nxt.c[2]
+                if not in_box(vp):
+                    continue
+                clear = [(e, x) for e, x in exits if line_hits(x, vp, obstacles) == 0]
+                if clear:
+                    e, x = min(clear, key=lambda ex: float(np.linalg.norm(ex[1] - vp)))
+                    r.log("exit %.1f m past gate %d, clear to gate %d's %.1f m viewpoint"
+                          % (e, g.id, nxt.id, d))
+                    return x
+            r.log("no exit clear to gate %d's viewpoint: default exit" % nxt.id)
+        for e, x in exits:
+            if abs(e - PASS_EXIT_M) < 1e-9:
+                return x
+        return exits[-1][1]                        # 0.6 m is outside: the longest one inside
 
     def update(self, r):
         s, g = r.state, r.target
