@@ -2,8 +2,8 @@
 """Your P3 policy: find a window, line up with it, fly through it, repeat.
 Fill in the TODOs.
 
-    python3 Code/Wrapper.py                                   # in the simulator
-    ros_node ... --policy policy_template:WindowRacer          # on the drone
+    python3 Code/Wrapper.py --policy policy:WindowRacer        # in the simulator
+    ros_node ... --policy policy:WindowRacer                   # on the drone
 
 act(obs, state) is called 15 times a second with
 
@@ -23,6 +23,22 @@ turns with it.
 Rendering, your detector and act() share one 66 ms frame on the lab PC's CPU.
 Where the windows are must come from obs alone: do not read gates.json, or
 state.gate_index, state.gate_distance_m or state.gate_bearing_rad.
+
+The modes (each one a class with start() and update()):
+
+    survey   hold position, sweep yaw +-60 deg at 30 deg/s around the current
+             heading, then face the closest tracked gate ahead          -> view
+    view     quintic to a point d in front of the gate along its normal
+             (d = 1.2, 1.0, 0.8 m: the first inside the flight box), holding yaw;
+             on arrival turn head-on (along the normal)                 -> measure
+    measure  hold; skip 5 ticks, then 15 ticks. Needs a closed hole in >= 10 of
+             them and a pass line within 15 deg of the normal          -> pass
+             otherwise view again (3 views, then one 0.2 m back-off), then false
+    pass     quintic from here through the centre to 0.6 m past it, yaw held;
+             passed when the plane is crossed            -> view / survey / done
+    done     hover
+
+The gate list is updated only in survey and measure.
 """
 import math
 import os
@@ -33,10 +49,31 @@ from splat_hitl.commands import Action
 from splat_hitl.policy import Policy
 
 from fpv import FpvRecorder
+import detector
+from control import PositionController, Quintic, YawController, heading_of
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 N_WINDOWS = 3                          # the course has three windows
 FOV_X_DEG = 60.656255852364644         # fixed: the drone camera's field of view
+
+# ----------------------------------------------------------------- decisions
+SWEEP_RAD = math.radians(60.0)         # survey: +-60 deg around the current heading
+SWEEP_RATE = math.radians(30.0)        # survey: 30 deg/s
+VIEW_DISTANCES = (1.2, 1.0, 0.8)       # view: first one inside the flight box
+BOX_MARGIN_M = 0.3
+BACKOFF_M = 0.2                        # after 3 views: one more, 0.2 m further back
+MAX_VIEWS = 3
+MEASURE_SKIP = 5                       # ticks to let the drone settle
+MEASURE_TICKS = 15
+MEASURE_VALID_MIN = 10                 # closed-hole frames needed out of MEASURE_TICKS
+MATCH_DIST_M = 0.75 * 0.91             # false-gate check: centroid within 3/4 window width
+MATCH_ANGLE_DEG = 20.0
+MATCH_DEPTH_TOL_M = 0.3                # ... and about d_view away
+PASS_MAX_ANGLE_DEG = 15.0              # pass line vs normal
+PASS_EXIT_M = 0.6                      # stop 0.6 m past the centre
+# The flight box (Vicon metres = scene metres in a3_train and a3_test) and height band.
+BOX_MIN = np.array([-0.50, -1.20, 0.10])
+BOX_MAX = np.array([5.25, 1.20, 1.80])
 
 
 def camera_matrix(width, height, fov_x_deg=FOV_X_DEG):
@@ -77,6 +114,205 @@ def wrap_pi(a):
     return (a + math.pi) % (2.0 * math.pi) - math.pi
 
 
+def in_box(p, margin=BOX_MARGIN_M):
+    p = np.asarray(p, float)
+    return bool(np.all(p >= BOX_MIN + margin) and np.all(p <= BOX_MAX - margin))
+
+
+def clamp_box(p, margin=BOX_MARGIN_M):
+    return np.clip(np.asarray(p, float), BOX_MIN + margin, BOX_MAX - margin)
+
+
+# --------------------------------------------------------------------------- #
+# The modes. update() returns (world velocity, yaw rate, next mode name or None).
+# --------------------------------------------------------------------------- #
+class Survey:
+    name = "survey"
+
+    def start(self, r):
+        s = r.state
+        self.hold = np.array(s.position_m, float)
+        self.targets = [wrap_pi(s.yaw_rad + SWEEP_RAD), wrap_pi(s.yaw_rad - SWEEP_RAD)]
+        self.k = 0
+        self.face = None
+        r.ctrl.reset()
+
+    def update(self, r):
+        s = r.state
+        r.gates.update(r.seen)
+        v = r.velocity_to(self.hold, s)
+        if self.face is None and self.k < len(self.targets):          # sweeping
+            tgt = self.targets[self.k]
+            if r.yaw_ctrl.arrived(s.yaw_rad, tgt):
+                self.k += 1
+            return v, r.yaw_ctrl.step(s.yaw_rad, tgt, max_rate=SWEEP_RATE), None
+        if self.face is None:                                          # sweep done
+            g = r.gates.select(s.position_m)
+            if g is None:
+                self.k = 0                         # nothing tracked yet: sweep again
+                return v, 0.0, None
+            r.set_target(g)
+            self.face = heading_of(g.c - self.hold)
+        if r.yaw_ctrl.arrived(s.yaw_rad, self.face, tol=math.radians(3.0)):
+            return v, 0.0, "view"
+        return v, r.yaw_ctrl.step(s.yaw_rad, self.face, max_rate=SWEEP_RATE), None
+
+
+class View:
+    name = "view"
+
+    def start(self, r):
+        s, g = r.state, r.target
+        r.view_tries += 1
+        dists = (r.d_view + BACKOFF_M,) if r.backoff_active else VIEW_DISTANCES
+        self.vp = None
+        for d in dists:
+            cand = g.c - d * g.n
+            cand[2] = g.c[2]                       # at the gate centre's height
+            if in_box(cand):
+                self.vp, r.d_view = cand, d
+                break
+        if self.vp is None:                        # none inside: the last one, clamped
+            r.d_view = dists[-1]
+            cand = g.c - r.d_view * g.n
+            cand[2] = g.c[2]
+            self.vp = clamp_box(cand)
+        self.traj = Quintic(s.position_m, self.vp)
+        self.t0, self.yaw_hold = s.t_s, s.yaw_rad
+        self.heading = heading_of(g.n)
+        self.turning = False
+        r.ctrl.reset()
+
+    def update(self, r):
+        s = r.state
+        t = s.t_s - self.t0
+        if not self.turning:                       # fly there, yaw held
+            p_d, v_d = self.traj.sample(t)
+            v = r.velocity_to(p_d, s, v_d)
+            if self.traj.done(t, s.position_m):
+                self.turning = True
+                r.ctrl.reset()
+            return v, r.yaw_ctrl.step(s.yaw_rad, self.yaw_hold), None
+        v = r.velocity_to(self.vp, s)              # on arrival: turn head-on
+        if r.yaw_ctrl.arrived(s.yaw_rad, self.heading):
+            return v, 0.0, "measure"
+        return v, r.yaw_ctrl.step(s.yaw_rad, self.heading), None
+
+
+class Measure:
+    name = "measure"
+
+    def start(self, r):
+        self.hold = np.array(r.state.position_m, float)
+        self.heading = heading_of(r.target.n)
+        self.k = 0
+        self.matched, self.valid = [], []
+        r.ctrl.reset()
+
+    def match(self, r, g):
+        """The detection that is the target: the false-gate check (1, 2, 3)."""
+        best, best_d = None, MATCH_DIST_M
+        for d in r.seen:
+            dist = float(np.linalg.norm(d["c"] - g.c))
+            if (dist < best_d and detector.angle_deg(d["n"], g.n) < MATCH_ANGLE_DEG
+                    and abs(d["dist"] - r.d_view) < MATCH_DEPTH_TOL_M):
+                best, best_d = d, dist
+        return best
+
+    def update(self, r):
+        s, g = r.state, r.target
+        v = r.velocity_to(self.hold, s)
+        w = r.yaw_ctrl.step(s.yaw_rad, self.heading)
+        self.k += 1
+        tgt = self.match(r, g)
+        r.gates.update([d for d in r.seen if d is not tgt])   # the target starts fresh
+        if self.k <= MEASURE_SKIP:
+            return v, w, None
+        if tgt is not None:
+            self.matched.append(tgt)
+            if tgt["hole_closed"]:
+                self.valid.append(tgt)
+        if self.k < MEASURE_SKIP + MEASURE_TICKS:
+            return v, w, None
+        return v, w, self.decide(r, g)
+
+    @staticmethod
+    def fuse(dets, use_centre):
+        C = np.array([d["centre"] if use_centre and d["centre"] is not None else d["c"]
+                      for d in dets])
+        N = np.array([d["n"] for d in dets])
+        N[N[:, 0] < 0] *= -1.0
+        n = N.mean(axis=0)                 ###might have to change (mean of normals)
+        return np.median(C, axis=0), n / np.linalg.norm(n)
+
+    def decide(self, r, g):
+        p = np.asarray(r.state.position_m, float)
+        if len(self.valid) >= MEASURE_VALID_MIN:
+            g.c, g.n = self.fuse(self.valid, use_centre=True)
+            line = g.c - p
+            ang = math.degrees(math.acos(float(np.clip(line @ g.n / np.linalg.norm(line), -1, 1))))
+            if ang <= PASS_MAX_ANGLE_DEG:
+                g.status = "measured"
+                r.log("measured gate %d at %s, n %s, pass line %.0f deg"
+                      % (g.id, np.round(g.c, 3), np.round(g.n, 3), ang))
+                return "pass"
+            r.log("pass line %.0f deg off the normal: view again" % ang)
+            return r.retry(g)
+        if not self.matched:                       # nothing there: a false gate
+            g.status = "false"
+            r.log("gate %d not found in measure: false" % g.id)
+            return r.next_target()
+        g.c, g.n = self.fuse(self.matched, use_centre=True)   # re-aim at the fresh estimate
+        r.log("closed hole in %d/%d ticks: view again" % (len(self.valid), MEASURE_TICKS))
+        return r.retry(g)
+
+
+class Pass:
+    name = "pass"
+
+    def start(self, r):
+        s, g = r.state, r.target
+        p0 = np.array(s.position_m, float)
+        u = g.c - p0
+        u /= np.linalg.norm(u)
+        self.end = g.c + PASS_EXIT_M * u
+        self.traj = Quintic(p0, self.end)
+        self.t0, self.yaw_hold = s.t_s, s.yaw_rad
+        self.crossed = False
+        r.ctrl.reset()
+
+    def update(self, r):
+        s, g = r.state, r.target
+        t = s.t_s - self.t0
+        p_d, v_d = self.traj.sample(t)
+        v = r.velocity_to(p_d, s, v_d)
+        w = r.yaw_ctrl.step(s.yaw_rad, self.yaw_hold)
+        if not self.crossed and float(g.n @ (np.asarray(s.position_m, float) - g.c)) > 0:
+            self.crossed = True
+            g.status = "passed"
+            r.passed += 1
+            r.log("crossed gate %d (%d/%d)" % (g.id, r.passed, N_WINDOWS))
+        if not self.traj.done(t, s.position_m):
+            return v, w, None
+        if not self.crossed:                       # arrived without crossing: look again
+            g.status = "tracked"
+            return v, w, r.retry(g)
+        if r.passed >= N_WINDOWS:
+            return v, w, "done"
+        return v, w, r.next_target()
+
+
+class Done:
+    name = "done"
+
+    def start(self, r):
+        self.hold = np.array(r.state.position_m, float)
+        r.ctrl.reset()
+
+    def update(self, r):
+        return r.velocity_to(self.hold, r.state), 0.0, None
+
+
 class WindowRacer(Policy):
     """Detector + state machine + your P2b controller. Velocity out."""
 
@@ -88,10 +324,13 @@ class WindowRacer(Policy):
 
     def __init__(self, record_fpv=True):
         ######## TODO - LOAD YOUR NETWORK ########
-        # Keep the weights next to this file and load them by a path built from
-        # HERE, e.g. onnxruntime.InferenceSession(os.path.join(HERE, "weights",
-        # "window.onnx")). Load once, here: never inside act().
-        self.net = None
+        self.net, self.device = detector.load_model(
+            os.path.join(HERE, "weights", "best.torchscript"))
+        # TorchScript optimises on its first calls: pay for that here, not in flight.
+        blank = detector.rgb01_to_bgr8(np.zeros((213, 320, 3), np.float32))
+        for _ in range(3):
+            detector.predict(self.net, self.device, blank, imgsz=320)
+        self.rng = np.random.default_rng(0)
         ######## END TODO ########
         self.fpv = FpvRecorder() if record_fpv else None
         self.K = None
@@ -99,37 +338,86 @@ class WindowRacer(Policy):
 
     def reset(self):
         """Called once before each run. Reset the state machine here."""
-        self.mode = "search"
+        self.mode = "survey"
         self.passed = 0
         self.window = None          # your last estimate of the window you are flying to
+        self.gates = detector.GateList()
+        # max_speed above the 0.8 m/s quintic cap leaves room for the P correction
+        self.ctrl = PositionController(max_speed=1.0, max_climb=0.6)
+        self.yaw_ctrl = YawController(kp=2.0, max_rate=math.radians(45.0))
+        self.modes = {m.name: m for m in (Survey(), View(), Measure(), Pass(), Done())}
+        self.cur = None
+        self.state, self.seen = None, []
+        self.target, self.view_tries, self.backoff_active = None, 0, False
+        self.d_view = VIEW_DISTANCES[0]
 
     # -- perception ----------------------------------------------------------
     def detect(self, rgb, depth_m):
-        """The closest window in the image, or None.
+        """The windows in the image, or None.
 
-        Return a dict with whatever your network gives, e.g.
-        {"mask": (H, W) bool, "corners": (4, 2) pixel array}; the FPV recorder
-        draws "mask" and "corners" if present.
+        Returns {"mask": union of the masks kept, "corners": hole centroids
+        (u, v) of the closed ones, "dets": per-mask image detections}; the FPV
+        recorder draws "mask" and "corners".
         """
         ######## TODO - YOUR NETWORK ########
-        return None
+        res = detector.predict(self.net, self.device, detector.rgb01_to_bgr8(rgb), imgsz=320)
+        dets = detector.analyse_masks(res)
+        if not dets:
+            return None
+        corners = [d["hole_uv"] for d in dets if d["hole_closed"]]
+        return {"mask": np.any([d["mask"] for d in dets], axis=0),
+                "corners": corners or None, "dets": dets}
         ######## END TODO ########
 
     def locate(self, det, depth_m, state):
-        """Detection + depth -> where the window is in the world, or None."""
+        """Detection + depth -> where the windows are in the world: a list of
+        {c, n, n_inl, hole_closed, centre, dist}, pieces of one window joined."""
         ######## TODO - WHERE IS THE WINDOW ########
-        # Back-project the window's pixels with their depths (pixel_to_camera),
-        # move them to the world (camera_to_world) and find the opening's centre.
-        # A plane through the board's points gives the direction it faces.
-        return None
+        return detector.locate_all(det["dets"], depth_m, self.K,
+                                   lambda p: camera_to_world(p, state),
+                                   state.position_m, self.rng)
         ######## END TODO ########
 
     # -- control -------------------------------------------------------------
-    def velocity_to(self, target_world, state):
+    def velocity_to(self, target_world, state, velocity_ff=(0.0, 0.0, 0.0)):
         """Your P2b position loop: a world target -> a world velocity in m/s."""
         ######## TODO - YOUR P2B CONTROLLER ########
-        return np.zeros(3)
+        return self.ctrl.step(state.position_m, target_world, velocity_ff)
         ######## END TODO ########
+
+    # -- state machine helpers -------------------------------------------------
+    def log(self, msg):
+        print("%6.2f s  [%s] %s" % (self.state.t_s, self.mode, msg))
+
+    def switch(self, name):
+        if self.cur is not None:
+            self.log("-> %s" % name)
+        self.mode = name
+        self.cur = self.modes[name]
+        self.cur.start(self)
+
+    def set_target(self, g):
+        self.target, self.view_tries, self.backoff_active = g, 0, False
+        self.d_view = VIEW_DISTANCES[0]
+        self.log("target gate %d at %s" % (g.id, np.round(g.c, 3)))
+
+    def next_target(self):
+        g = self.gates.select(self.state.position_m)
+        if g is None:
+            self.target = None
+            return "survey"
+        self.set_target(g)
+        return "view"
+
+    def retry(self, g):
+        if self.view_tries < MAX_VIEWS:
+            return "view"
+        if not self.backoff_active:
+            self.backoff_active = True
+            return "view"
+        g.status = "false"
+        self.log("gate %d: no clean measurement after backing off: false" % g.id)
+        return self.next_target()
 
     # -- the state machine -----------------------------------------------------
     def act(self, obs, state) -> Action:
@@ -142,17 +430,13 @@ class WindowRacer(Policy):
 
         v_world, yaw_rate = np.zeros(3), 0.0
         ######## TODO - THE STATE MACHINE ########
-        # Keep self.window on the window you are flying to: update it from
-        # `seen` only when `seen` is that window, and not at all once committed.
-        # search    no window in view: turn on the spot until one is
-        # align     face it, and move to a point in front of its opening
-        # approach  fly at the opening, keeping it centred
-        # through   commit: carry on straight until you are past it -- it fills
-        #           and then leaves the image before you get there
-        # done      after N_WINDOWS: hover
-        # Change self.mode when a step is done; count windows in self.passed.
-        if self.mode == "search":
-            yaw_rate = 0.3
+        self.state, self.seen = state, (seen or [])
+        if self.cur is None:
+            self.switch("survey")
+        v_world, yaw_rate, nxt = self.cur.update(self)
+        if nxt is not None and nxt != self.mode:
+            self.switch(nxt)
+        self.window = self.target
         ######## END TODO ########
 
         if self.fpv is not None:
